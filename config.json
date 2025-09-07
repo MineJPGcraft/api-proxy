@@ -1,0 +1,61 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 7001,
+    "log_requests": false,
+    "reload_interval": 60
+  },
+  "global_proxy": "",
+  "force_header_overwrite": false,
+  "headers_to_drop": [
+    "X-Real-Ip",
+    "X-Forwarded-For",
+    "User-Agent",
+    "Referer",
+    "Cookie",
+    "Cf-Worker",
+    "Cf-Visitor",
+    "Cf-Ray",
+    "Cf-Ipcountry",
+    "Cf-Ew-Via",
+    "Cf-Connecting-Ip",
+    "Cdn-Loop"
+  ],
+  "routes": {
+    "aihubmix": {
+      "enabled": true,
+      "target_url": "https://aihubmix.com",
+      "custom_headers": {
+        "APP-Code": "LobeHub"
+      }
+    },
+    "gemini": {
+      "enabled": true,
+      "target_url": "https://generativelanguage.googleapis.com",
+      "custom_headers": {},
+      "proxy": ""
+    },
+    "gb": {
+      "enabled": true,
+      "target_url": "https://gemini.mcjpg.org",
+      "custom_headers": {},
+      "proxy": ""
+    },
+    "chatapi": {
+      "enabled": true,
+      "target_url": "https://chatapi.mcjpg.org",
+      "custom_headers": {},
+      "proxy": ""
+    },
+    "openrouter": {
+      "enabled": true,
+      "target_url": "https://openrouter.ai/api",
+      "custom_headers": {}
+    },
+    "proxy": {
+      "enabled": true,
+      "universal_proxy": true,
+      "custom_headers":  {}
+    }
+  }
+}
