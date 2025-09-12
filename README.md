@@ -1,4 +1,4 @@
-# 🚀 灵活的API代理服务器 (Dynamic API Proxy)
+# 🚀 灵活API代理服务器 (Dynamic API Proxy)
 
 一个基于Python Flask构建的轻量级、高性能API代理服务器，提供可配置的路由、自定义Header注入、请求日志控制、热重载配置、万能转发模式以及HTTP/Socks5代理支持。特别适用于为第三方API（如OpenAI、Gemini等）提供统一入口、添加认证信息或进行流量整形。
 
@@ -32,7 +32,7 @@
 克隆仓库并安装依赖：
 
 ```bash
-git clone https://github.com/ZhuYuxuan9302/api-proxy.git
+git clone https://github.com/MineJPGcraft/api-proxy.git
 cd 你的仓库名
 pip install -r requirements.txt
 ```
