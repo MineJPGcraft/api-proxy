@@ -1,61 +1,136 @@
 {
+  // ==========================================================
+  // 全局服务器配置 (server)
+  // 控制代理服务的监听地址、端口、日志行为和配置热重载。
+  // ==========================================================
   "server": {
     "host": "0.0.0.0",
-    "port": 7001,
-    "log_requests": false,
-    "reload_interval": 60
+    // [字符串] 服务器监听的IP地址。
+    //   - "0.0.0.0": 允许从任何网络接口访问 (推荐用于生产)。
+    //   - "127.0.0.1": 只允许本地访问。
+    "port": 3000,
+    // [整数] 服务器监听的端口。例如 80, 443, 8080 等。
+    "log_requests": true,
+    // [布尔值] 是否在控制台打印每个请求的详细日志。
+    //   - true: 打印所有请求的转发日志、Header处理信息，以及Flask/Werkzeug的访问日志。
+    //   - false: 完全禁用请求日志输出，只打印服务启动和配置重载信息，推荐用于高并发生产环境。
+    "reload_interval": 30
+    // [整数] 配置文件 (config.json) 自动热重载的间隔秒数。
+    //   - -1: 禁用自动重载功能（默认）。
+    //   - 0: 实时监控（实际为每1秒检查一次文件修改时间戳，以避免CPU过度消耗）。
+    //   - 任何正整数: 每隔指定秒数检查一次 'config.json' 文件是否有更新。
   },
-  "global_proxy": "",
+
+  // ==========================================================
+  // 全局转发代理设置 (global_proxy)
+  // 如果所有路由都需要通过同一个代理转发，可以在此处统一配置。
+  // ==========================================================
+  "global_proxy": null,
+  // [字符串 | null] 可选：为所有未配置独立代理的路由设置一个全局转发代理。
+  //   - null 或 "": 表示不使用全局代理。
+  //   - 代理URL格式示例：
+  //     - HTTP代理: "http://host:port" 或 "http://user:pass@host:port"
+  //     - HTTPS代理: "https://host:port" 或 "https://user:pass@host:port"
+  //     - SOCKS5代理: "socks5://host:port" 或 "socks5://user:pass@host:port" (需要 requests[socks] 额外安装)
+  // 注意：如果某个路由自身配置了 'proxy' 字段，则路由的配置会优先覆盖此全局设置。
+
+  // ==========================================================
+  // 全局Header处理策略 (force_header_overwrite)
+  // 定义当客户端请求Header与代理自定义Header冲突时的默认行为。
+  // ==========================================================
   "force_header_overwrite": false,
+  // [布尔值] 可选：全局默认的Header覆盖策略，会被路由级别 (route-level) 的 'force_header_overwrite' 覆盖。
+  //   - true: 如果客户端请求Header与代理配置的 'custom_headers' 有同名项，则强制使用代理配置的值。
+  //   - false: 如果客户端请求Header与代理配置的 'custom_headers' 有同名项，则优先保留客户端提供的值。
+  // 默认值为 false (优先客户端)。
+
+  // ==========================================================
+  // 需要丢弃的客户端Header列表 (headers_to_drop)
+  // 这些Header将从客户端请求中移除，不会转发给上游服务器。
+  // ==========================================================
   "headers_to_drop": [
     "X-Real-Ip",
     "X-Forwarded-For",
-    "User-Agent",
-    "Referer",
-    "Cookie",
-    "Cf-Worker",
-    "Cf-Visitor",
-    "Cf-Ray",
-    "Cf-Ipcountry",
-    "Cf-Ew-Via",
-    "Cf-Connecting-Ip",
-    "Cdn-Loop"
+    "Via",
+    "Traceparent" // 示例：如果不需要转发分布式追踪Header
   ],
+  // [字符串数组] 可选：一个字符串数组，列出需要从客户端请求中移除的Header名称。
+  //   - 匹配时不区分大小写。
+  //   - 这些Header通常是代理环境或负载均衡器在进入后端服务时不希望保留的（例如客户端的IP信息）。
+
+  // ==========================================================
+  // 路由配置 (routes)
+  // 定义代理服务器如何处理不同路径前缀的请求。
+  // ==========================================================
   "routes": {
-    "aihubmix": {
+    "openai": {
+      // 这是一个 **标准路由** 的示例，用于 OpenAI API。
+      // 请求路径如 `/openai/v1/chat/completions` 会匹配到此路由。
       "enabled": true,
-      "target_url": "https://aihubmix.com",
+      // [布尔值] 可选，默认 true。是否启用此路由。
+      //   - true: 启用路由，匹配的请求会被处理。
+      //   - false: 禁用路由，任何匹配的请求都会收到 404 错误。
+      "target_url": "https://api.openai.com",
+      // [字符串] 目标上游服务器的基础URL。
+      //   - 客户端请求路径中的 `/openai` 之后的部分会附加到这个URL后面。
+      //   - 例如：请求 `http://localhost:3000/openai/v1/models` 会转发到 `https://api.openai.com/v1/models`。
+      //   - 在 'universal_proxy: true' 模式下此字段会被忽略。
       "custom_headers": {
-        "APP-Code": "LobeHub"
-      }
+        // [对象] 可选：为此路由添加或修改的自定义请求Header。
+        //   - 例如，为上游API添加认证Token或自定义追踪ID。
+        "Authorization": "Bearer sk-your_openai_api_key_here",
+        "X-My-Proxy-Identifier": "LobeHub-Gateway"
+      },
+      "force_header_overwrite": true,
+      // [布尔值] 可选，默认继承全局设置。为当前 **路由** 定义Header覆盖策略。
+      //   - true: （路由级别强制覆盖）此路由会强制使用 'custom_headers' 中的值，覆盖客户端提供的同名Header。
+      //   - false: （路由级别优先客户端）此路由会优先保留客户端提供的同名Header。
+      //   - 如果不配置此字段，则遵循全局的 'force_header_overwrite' 设置。
+      "proxy": null
+      // [字符串 | null] 可选：为当前 **路由** 单独配置转发代理。格式同 'global_proxy'。
+      //   - 例如: "http://127.0.0.1:7890" 或 "socks5://localhost:1080"。
+      //   - 此配置会覆盖 'global_proxy' 的设置，实现路由粒度的代理控制。
     },
     "gemini": {
-      "enabled": true,
+      // 另一个标准路由示例，演示默认行为（enabled=true, force_header_overwrite=继承全局）。
       "target_url": "https://generativelanguage.googleapis.com",
-      "custom_headers": {},
-      "proxy": ""
+      "custom_headers": {
+        "X-Gemini-API-Version": "v1"
+      }
+      // 此路由没有配置 'enabled'，因此默认启用 (true)。
+      // 此路由没有配置 'force_header_overwrite' 或 'proxy'，因此会继承全局的设置。
+      // 注意：Gemini API 通常通过 URL 查询参数 (param `?key=...`) 进行认证，无需在 Header 中。
     },
-    "gb": {
-      "enabled": true,
-      "target_url": "https://gemini.mcjpg.org",
-      "custom_headers": {},
-      "proxy": ""
-    },
-    "chatapi": {
-      "enabled": true,
-      "target_url": "https://chatapi.mcjpg.org",
-      "custom_headers": {},
-      "proxy": ""
-    },
-    "openrouter": {
-      "enabled": true,
-      "target_url": "https://openrouter.ai/api",
-      "custom_headers": {}
-    },
-    "proxy": {
+    "passthrough": {
+      // 这是一个 **万能代理 (Universal Proxy)** 路由的示例。
+      // 请求 `/passthrough/https://www.google.com` 会转发到 `https://www.google.com`。
       "enabled": true,
       "universal_proxy": true,
-      "custom_headers":  {}
+      // [布尔值] 启用万能代理模式。
+      //   - true: 启用万能代理模式。在此模式下，此路由的 'target_url' 配置会被忽略。
+      //     代理会将客户端请求URL中 `/passthrough/` 之后的所有内容，直接作为最终的目标URL进行转发。
+      //   - false: 作为标准路由处理。
+      "custom_headers": {
+        "X-Forwarded-By-Universal": "Dynamic-Proxy-Gateway"
+      }
+      // 万能代理模式下依然可以添加自定义Header。
+      // 其Header覆盖策略将继承全局设置，或可单独配置 'force_header_overwrite' 字段。
+    },
+    "internal_service": {
+      // 演示路由级别代理的路由
+      // 此路由的所有请求都将通过本地的SOCKS5代理转发。
+      "enabled": true,
+      "target_url": "http://192.168.1.100:8000",
+      "proxy": "socks5://127.0.0.1:1080"
+      // 为此路由指定一个独立的SOCKS5代理。
+    },
+    "disabled_api": {
+      // 这是一个 **被禁用路由** 的示例。
+      // 任何请求 `/disabled_api/...` 都将收到 404 错误。
+      "enabled": false,
+      // 将此路由禁用。
+      "target_url": "https://api.another-example.com"
+      // 即使配置了目标URL，由于 'enabled' 为 false，该路由也不会被激活。
     }
   }
 }
