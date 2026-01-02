@@ -1,194 +1,658 @@
-# 🚀 灵活API代理服务器 (Dynamic API Proxy)
+# 🚀 Python API Proxy
 
-一个基于Python Flask构建的轻量级、高性能API代理服务器，提供可配置的路由、自定义Header注入、请求日志控制、热重载配置、万能转发模式以及HTTP/Socks5代理支持。特别适用于为第三方API（如OpenAI、Gemini等）提供统一入口、添加认证信息或进行流量整形。
+一个功能强大、高度可配置的大模型 API 代理服务，支持多路由转发、自定义 Header、反向代理适配等特性。
 
-## ✨ 主要功能
+## ✨ 特性
 
-*   **多上游路由**: 根据请求URL的第一个路径段，智能地将请求转发到不同的上游服务器。
-*   **Header注入与策略**:
-    *   为每个上游路由配置自定义请求Header。
-    *   支持“优先使用客户端Header”或“强制覆盖客户端Header”两种策略，可在全局或路由级别配置。
-    *   可配置丢弃客户端请求中的特定Header（例如 `X-Real-Ip`）。
-*   **配置热重载**: 无需重启服务即可动态更新 `config.json` 中的配置（基于文件修改时间戳检测）。
-    *   支持禁用、实时监控（1秒间隔）或按指定秒数间隔检查。
-*   **路由启用/禁用开关**: 灵活控制每个上游路由的可用性，无需修改或删除配置项。
-*   **万能转发模式 (Universal Proxy)**: 启用后，路由路径中的剩余部分将直接作为目标URL，实现动态的任意目标转发，无需预设 `target_url`。
-    *   示例: `http://localhost:3000/passthrough/https://www.google.com`
-*   **代理支持**:
-    *   支持配置全局HTTP/HTTPS/SOCKS5代理。
-    *   也可为每个路由单独配置代理，路由级配置优先于全局配置。
-*   **请求日志控制**: 可通过配置完全禁用请求日志输出，避免高并发下日志刷屏。
-*   **命令行仪表盘**: 服务启动时显示清晰的全局配置和路由概览，一目了然。
+- 🔀 **多路由转发** - 单一服务代理多个 API 端点
+- 🎯 **Base Path 支持** - 完美适配 Nginx 等反向代理场景，支持任意层级路径
+- 🔑 **自定义 Header** - 为每个路由配置独立的认证信息
+- ⚡ **Header 覆盖策略** - 灵活控制客户端 Header 与配置 Header 的优先级
+- 🌐 **代理支持** - 全局代理与路由级代理配置
+- 🔄 **配置热重载** - 无需重启即可更新配置
+- 📝 **请求日志** - 可开关的详细请求日志
+- 🗑️ **Header 过滤** - 移除指定的客户端 Header
+- 🌍 **万能代理模式** - 支持动态目标 URL
+- 📡 **流式响应** - 完整支持 SSE 流式传输
 
-## 📦 如何开始
+## 📦 安装
 
-### 1. 先决条件
-
-*   Python 3.8+
-*   `pip` (Python包管理器)
-
-### 2. 安装
-
-克隆仓库并安装依赖：
+### 依赖
 
 ```bash
-git clone https://github.com/MineJPGcraft/api-proxy.git
-cd 你的仓库名
-pip install -r requirements.txt
+pip install flask requests
 ```
 
-**`requirements.txt` 文件内容:**
+### 文件结构
 
 ```
-Flask
-requests
+your-project/
+├── proxy.py        # 主程序
+└── config.json     # 配置文件
 ```
 
-### 3. 配置 `config.json`
+## ⚙️ 配置文件
 
-在项目根目录下创建一个名为 `config.json` 的文件。请参考下方 `config.json` 示例（含所有配置项）部分。
-
-### 4. 运行服务
-
-```bash
-python main.py
-```
-
-服务启动后，您将在控制台看到一个简洁的配置仪表盘。
-
-## 📋 配置 `config.json`
-
-`config.json` 是代理服务器的核心配置文件，允许您灵活定义其行为。
-
-**完整的配置示例和详细说明请参见下方 `config.json` 示例（含所有配置项）**
-
-这里简述关键配置项：
-
-*   **`server`**: 服务器监听设置和通用行为。
-    *   `host`: 监听地址 (默认 `0.0.0.0`)。
-    *   `port`: 监听端口 (默认 `3000`)。
-    *   `log_requests`: `true` 或 `false`，是否输出请求详情日志。
-    *   `reload_interval`: 配置热重载间隔 (秒)。`-1` 禁用，`0` 实时监控（1秒检查），`>0` 指定间隔秒数。
-*   **`global_proxy`**: 全局HTTP/SOCKS5代理设置，例如 `"http://user:pass@host:port"` 或 `"socks5://user:pass@host:port"`。
-*   **`force_header_overwrite` (全局)**: `true` 或 `false`，所有路由默认的Header覆盖策略。
-*   **`headers_to_drop`**: 一个字符串数组，列出需要从客户端请求中移除的Header名称（不区分大小写）。
-*   **`routes`**: 定义所有上游路由的字典。每个键代表一个路由前缀（例如 `openai`）。
-    *   **每个路由的配置项**:
-        *   `enabled`: `true` (默认) 或 `false`，是否启用此路由。
-        *   `target_url`: 目标上游服务器的基础URL。万能代理模式下忽略。
-        *   `custom_headers`: 要为此路由添加的Header键值对。
-        *   `force_header_overwrite`: `true` 或 `false`，此路由特有的Header覆盖策略，覆盖全局设置。
-        *   `proxy`: 此路由独有的HTTP/SOCKS5代理，格式同 `global_proxy`。
-        *   `universal_proxy`: `true` 或 `false`，是否启用万能代理模式。
-
-## 💡 使用示例
-
-假设您的代理服务运行在 `http://localhost:3000`。
-
-### 1. 标准路由转发 (OpenAI)
-
-`config.json` 中配置了 `/openai` 路由，并带有自定义 `Authorization` Header：
+### 完整配置示例
 
 ```json
 {
+  "server": {
+    "host": "0.0.0.0",
+    "port": 3000,
+    "log_requests": true,
+    "reload_interval": 5,
+    "base_path": ""
+  },
+  "global_proxy": null,
+  "force_header_overwrite": false,
+  "headers_to_drop": ["x-forwarded-for", "x-real-ip"],
+  
   "routes": {
     "openai": {
+      "enabled": true,
       "target_url": "https://api.openai.com",
+      "proxy": null,
+      "force_header_overwrite": false,
       "custom_headers": {
-        "Authorization": "Bearer sk-xxxxxxxxxxxxxxxxxxxxxxxx"
-      },
-      "force_header_overwrite": true
-    }
-  }
-}
-```
-
-**发送请求:**
-
-```bash
-curl http://localhost:3000/openai/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-        "model": "gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": "Hello!"}]
-      }'
-```
-代理会将请求转发到 `https://api.openai.com/v1/chat/completions`，并**强制添加/覆盖** `Authorization` Header。
-
-### 2. 万能路由转发 (Google)
-
-`config.json` 中配置了 `/passthrough` 路由为万能代理模式：
-
-```json
-{
-  "routes": {
-    "passthrough": {
-      "universal_proxy": true,
-      "custom_headers": {
-        "X-Proxy-By": "My Universal Proxy"
+        "Authorization": "Bearer sk-xxxx"
       }
     }
   }
 }
 ```
 
-**发送请求:**
+### 配置项详解
+
+#### `server` - 服务器配置
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `host` | string | `"0.0.0.0"` | 监听地址 |
+| `port` | number | `3000` | 监听端口 |
+| `log_requests` | boolean | `true` | 是否输出请求日志 |
+| `reload_interval` | number | `-1` | 配置热重载间隔（秒）<br>`-1`: 禁用<br>`0`: 实时监控（1秒）<br>`>0`: 指定间隔 |
+| `base_path` | string | `""` | 基础路径前缀，用于反代场景<br>支持多级路径如 `/api/v1` |
+
+#### 全局配置
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `global_proxy` | string/null | `null` | 全局转发代理<br>格式: `http://host:port` 或 `socks5://host:port` |
+| `force_header_overwrite` | boolean | `false` | 全局 Header 覆盖策略<br>`true`: 配置优先<br>`false`: 客户端优先 |
+| `headers_to_drop` | array | `[]` | 要移除的客户端 Header 列表 |
+
+#### `routes` - 路由配置
+
+每个路由的 key 作为访问路径的第一段。
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `enabled` | boolean | 否 | 是否启用，默认 `true` |
+| `target_url` | string | 是* | 目标 API 地址 |
+| `universal_proxy` | boolean | 否 | 万能代理模式，默认 `false` |
+| `proxy` | string/null | 否 | 路由专用代理<br>`null`: 使用全局代理<br>`""`: 不使用代理<br>`"http://..."`: 指定代理 |
+| `force_header_overwrite` | boolean | 否 | 路由级 Header 覆盖策略，覆盖全局设置 |
+| `custom_headers` | object | 否 | 自定义请求 Header |
+
+\* 当 `universal_proxy: true` 时不需要 `target_url`
+
+## 🚀 启动
 
 ```bash
-# 访问 Google 首页
-curl http://localhost:3000/passthrough/https://www.google.com
-
-# 访问 GitHub 某个 API
-# 注意：原始请求的查询参数 (eg: ?key=123) 会被保留并附加到最终目标URL
-curl "http://localhost:3000/passthrough/https://api.github.com/users/octocat?extra_param=true" \
-     -H "Accept: application/vnd.github.v3+json"
+python proxy.py
 ```
 
-代理会将请求转发到您在URL中指定的 `https://www.google.com` 或 `https://api.github.com/users/octocat?extra_param=true`，并添加 `X-Proxy-By` Header。
+启动后会显示详细的配置信息：
 
-### 3. 被禁用路由
+```
+============================================================
+🚀 高级功能代理服务已启动
+============================================================
 
-`config.json` 中配置了 `/disabled_service` 路由但 `enabled: false`：
+[全局配置]
+  - 监听地址: http://0.0.0.0:3000
+  - 基础路径 (base_path): /api/v1
+    → 前端反代示例: https://your-domain.com/api/v1/openai/v1/chat/completions
+  - 请求日志: ✅ 已开启
+  - 配置热重载: ✅ 已开启 (每 5 秒检查一次)
+  - 全局Header策略: 🔄 优先客户端
+
+[路由表]
+  ✅ /api/v1/openai -> https://api.openai.com
+  ✅ /api/v1/anthropic -> https://api.anthropic.com
+  ❌ /api/v1/disabled-route -> https://example.com  (已禁用)
+
+============================================================
+...等待请求...
+```
+
+## 📖 使用示例
+
+### 基础用法
+
+#### 配置
 
 ```json
 {
+  "server": {
+    "host": "0.0.0.0",
+    "port": 3000
+  },
   "routes": {
-    "disabled_service": {
-      "enabled": false,
-      "target_url": "https://api.example.com"
+    "openai": {
+      "enabled": true,
+      "target_url": "https://api.openai.com",
+      "custom_headers": {
+        "Authorization": "Bearer sk-xxxx"
+      }
     }
   }
 }
 ```
 
-**发送请求:**
+#### 请求
 
 ```bash
-curl http://localhost:3000/disabled_service/some/path
-```
-您将收到 `404 Not Found` 错误和 `{"error": "Route 'disabled_service' not found or is disabled."}` 响应，因为该路由已被禁用。
+# 原始请求
+curl https://api.openai.com/v1/chat/completions
 
-## 📚 高级配置
+# 通过代理
+curl http://localhost:3000/openai/v1/chat/completions
+```
+
+### 多个 API 服务
+
+```json
+{
+  "routes": {
+    "openai": {
+      "enabled": true,
+      "target_url": "https://api.openai.com",
+      "custom_headers": {
+        "Authorization": "Bearer sk-openai-xxxx"
+      }
+    },
+    "anthropic": {
+      "enabled": true,
+      "target_url": "https://api.anthropic.com",
+      "custom_headers": {
+        "x-api-key": "sk-ant-xxxx",
+        "anthropic-version": "2023-06-01"
+      }
+    },
+    "gemini": {
+      "enabled": true,
+      "target_url": "https://generativelanguage.googleapis.com",
+      "custom_headers": {
+        "x-goog-api-key": "your-gemini-key"
+      }
+    },
+    "deepseek": {
+      "enabled": true,
+      "target_url": "https://api.deepseek.com",
+      "custom_headers": {
+        "Authorization": "Bearer sk-deepseek-xxxx"
+      }
+    }
+  }
+}
+```
+
+```bash
+# OpenAI
+curl http://localhost:3000/openai/v1/chat/completions
+
+# Anthropic Claude
+curl http://localhost:3000/anthropic/v1/messages
+
+# Google Gemini
+curl http://localhost:3000/gemini/v1beta/models/gemini-pro:generateContent
+
+# DeepSeek
+curl http://localhost:3000/deepseek/v1/chat/completions
+```
+
+### 反向代理场景 (Base Path)
+
+当服务部署在 Nginx 等反向代理后面时：
+
+#### Nginx 配置
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name api.example.com;
+    
+    location /byok/ {
+        proxy_pass http://127.0.0.1:3000/byok/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+    }
+}
+```
+
+#### 代理配置
+
+```json
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 3000,
+    "base_path": "/byok"
+  },
+  "routes": {
+    "openai": {
+      "enabled": true,
+      "target_url": "https://api.openai.com"
+    }
+  }
+}
+```
+
+#### 请求流程
+
+```
+用户请求:
+  https://api.example.com/byok/openai/v1/chat/completions
+                    ↓ Nginx
+程序收到:
+  /byok/openai/v1/chat/completions
+                    ↓ 剥离 base_path
+有效路径:
+  openai/v1/chat/completions
+                    ↓ 路由匹配
+转发到:
+  https://api.openai.com/v1/chat/completions
+```
+
+#### 多级 Base Path
+
+支持任意层级的路径前缀：
+
+```json
+{
+  "server": {
+    "base_path": "/api/v1/proxy"
+  }
+}
+```
+
+```bash
+curl https://example.com/api/v1/proxy/openai/v1/chat/completions
+```
+
+### Header 覆盖策略
+
+控制当客户端 Header 与配置 Header 冲突时的行为。
+
+#### 全局优先客户端（默认）
+
+```json
+{
+  "force_header_overwrite": false,
+  "routes": {
+    "openai": {
+      "target_url": "https://api.openai.com",
+      "custom_headers": {
+        "Authorization": "Bearer sk-default-key"
+      }
+    }
+  }
+}
+```
+
+```bash
+# 使用配置中的 key
+curl http://localhost:3000/openai/v1/models
+
+# 使用自己的 key（客户端优先）
+curl -H "Authorization: Bearer sk-my-key" http://localhost:3000/openai/v1/models
+```
+
+#### 全局强制覆盖
+
+```json
+{
+  "force_header_overwrite": true
+}
+```
+
+所有请求都将使用配置中的 Header，忽略客户端提供的。
+
+#### 路由级覆盖
+
+```json
+{
+  "force_header_overwrite": false,
+  "routes": {
+    "public-api": {
+      "target_url": "https://api.openai.com",
+      "force_header_overwrite": false,
+      "custom_headers": {
+        "Authorization": "Bearer sk-default"
+      }
+    },
+    "private-api": {
+      "target_url": "https://api.openai.com",
+      "force_header_overwrite": true,
+      "custom_headers": {
+        "Authorization": "Bearer sk-fixed-key"
+      }
+    }
+  }
+}
+```
+
+### 代理配置
+
+#### 全局代理
+
+所有路由默认使用此代理：
+
+```json
+{
+  "global_proxy": "http://127.0.0.1:7890"
+}
+```
+
+#### 路由专用代理
+
+```json
+{
+  "global_proxy": "http://127.0.0.1:7890",
+  "routes": {
+    "openai": {
+      "target_url": "https://api.openai.com",
+      "proxy": "http://us-proxy.example.com:8080"
+    },
+    "domestic-api": {
+      "target_url": "https://api.domestic.com",
+      "proxy": ""
+    }
+  }
+}
+```
+
+| `proxy` 值 | 行为 |
+|------------|------|
+| 未设置/`null` | 使用全局代理 |
+| `""` (空字符串) | 不使用代理（直连） |
+| `"http://..."` | 使用指定代理 |
+
+#### 支持的代理协议
+
+```json
+"proxy": "http://host:port"
+"proxy": "https://host:port"
+"proxy": "socks5://host:port"
+"proxy": "socks5://user:pass@host:port"
+```
+
+### 万能代理模式
+
+动态指定目标 URL，适用于需要代理任意地址的场景：
+
+```json
+{
+  "routes": {
+    "proxy": {
+      "enabled": true,
+      "universal_proxy": true
+    }
+  }
+}
+```
+
+```bash
+# 代理任意 HTTPS 地址
+curl http://localhost:3000/proxy/https://api.example.com/v1/endpoint
+
+# 代理任意 HTTP 地址
+curl http://localhost:3000/proxy/http://internal-api.local/data
+```
+
+**格式**: `/{route_key}/{protocol}://{target_host}/{path}`
+
+### Header 过滤
+
+移除客户端发送的特定 Header：
+
+```json
+{
+  "headers_to_drop": [
+    "x-forwarded-for",
+    "x-real-ip",
+    "cf-connecting-ip",
+    "x-forwarded-proto"
+  ]
+}
+```
+
+常用于：
+- 隐藏客户端真实 IP
+- 移除 CDN 添加的 Header
+- 清理不必要的元数据
 
 ### 配置热重载
 
-当 `server.reload_interval` 配置为 `> -1` 的值时，任何对 `config.json` 文件的修改都将在指定间隔后自动生效，无需重启 `main.py`。这对于生产环境中的动态管理非常有用。
+```json
+{
+  "server": {
+    "reload_interval": 5
+  }
+}
+```
 
-### 代理支持
+| 值 | 行为 |
+|----|------|
+| `-1` | 禁用热重载 |
+| `0` | 实时监控（每秒检查） |
+| `>0` | 指定检查间隔（秒） |
 
-*   **全局代理**: 在 `config.json` 的根目录配置 `global_proxy`。
-*   **路由级代理**: 在特定路由配置中添加 `proxy` 字段。
-    *   例如：`"proxy": "http://user:password@10.0.0.1:8080"` 或 `"socks5://127.0.0.1:1080"`。
+修改 `config.json` 后无需重启服务，配置会自动生效。
 
-## ⚠️ 安全提示
+## 📡 API 端点
 
-*   **万能转发模式 (`universal_proxy`)**: 启用此功能会将您的代理服务器变成一个开放的代理，可以转发到互联网上的任何URL。**在生产环境中谨慎使用，并确保您的服务器受到适当的网络安全保护。**
-*   **API Keys/Tokens**: 避免直接在 `config.json` 中硬编码敏感信息。建议使用环境变量或其他更安全的秘密管理方式（此版本代码未实现，需要进一步开发）。
+### `GET /`
 
-## 📝 贡献
+健康检查端点。
 
-欢迎提交Issue或Pull Request来改进此项目。
+**响应:**
+```json
+{
+  "message": "Python Proxy is running.",
+  "base_path": "/api/v1"
+}
+```
 
-## 📄 许可证
+### `* /<path>`
 
-本项目采用 MIT 许可证
+代理转发端点，支持所有 HTTP 方法。
+
+## 🔧 完整配置示例
+
+### 生产环境配置
+
+```json
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 3000,
+    "log_requests": false,
+    "reload_interval": 30,
+    "base_path": "/api/llm"
+  },
+  "global_proxy": null,
+  "force_header_overwrite": false,
+  "headers_to_drop": [
+    "x-forwarded-for",
+    "x-real-ip",
+    "cf-connecting-ip"
+  ],
+  
+  "routes": {
+    "openai": {
+      "enabled": true,
+      "target_url": "https://api.openai.com",
+      "custom_headers": {
+        "Authorization": "Bearer sk-openai-xxxx"
+      }
+    },
+    "openai-azure": {
+      "enabled": true,
+      "target_url": "https://your-resource.openai.azure.com",
+      "custom_headers": {
+        "api-key": "your-azure-key"
+      }
+    },
+    "anthropic": {
+      "enabled": true,
+      "target_url": "https://api.anthropic.com",
+      "force_header_overwrite": true,
+      "custom_headers": {
+        "x-api-key": "sk-ant-xxxx",
+        "anthropic-version": "2023-06-01"
+      }
+    },
+    "gemini": {
+      "enabled": true,
+      "target_url": "https://generativelanguage.googleapis.com",
+      "proxy": "http://us-proxy:8080",
+      "custom_headers": {
+        "x-goog-api-key": "your-gemini-key"
+      }
+    },
+    "ollama": {
+      "enabled": true,
+      "target_url": "http://localhost:11434",
+      "proxy": ""
+    }
+  }
+}
+```
+
+### BYOK (Bring Your Own Key) 配置
+
+允许用户使用自己的 API Key：
+
+```json
+{
+  "server": {
+    "base_path": "/byok"
+  },
+  "force_header_overwrite": false,
+  "routes": {
+    "openai": {
+      "enabled": true,
+      "target_url": "https://api.openai.com"
+    },
+    "anthropic": {
+      "enabled": true,
+      "target_url": "https://api.anthropic.com",
+      "custom_headers": {
+        "anthropic-version": "2023-06-01"
+      }
+    }
+  }
+}
+```
+
+用户请求时需自带 API Key：
+
+```bash
+curl -H "Authorization: Bearer sk-user-key" \
+  https://example.com/byok/openai/v1/chat/completions
+```
+
+### 内部服务聚合
+
+```json
+{
+  "routes": {
+    "user-service": {
+      "enabled": true,
+      "target_url": "http://user-service.internal:8080",
+      "proxy": ""
+    },
+    "order-service": {
+      "enabled": true,
+      "target_url": "http://order-service.internal:8080",
+      "proxy": ""
+    },
+    "external-api": {
+      "enabled": true,
+      "target_url": "https://api.external.com",
+      "proxy": "http://egress-proxy:3128"
+    }
+  }
+}
+```
+
+## ❓ 常见问题
+
+### Q: 流式响应 (SSE) 是否支持？
+
+A: 支持。程序使用 `stream=True` 和 chunked 传输，完整支持 OpenAI、Anthropic 等的流式响应。
+
+### Q: 超时时间如何配置？
+
+A: 当前硬编码为 180 秒。如需修改，可在代码中搜索 `timeout=180` 进行调整。
+
+### Q: 如何部署到生产环境？
+
+A: 推荐使用 Gunicorn 或 uWSGI：
+
+```bash
+# Gunicorn
+pip install gunicorn
+gunicorn -w 4 -b 127.0.0.1:3000 proxy:app
+
+# 配合 systemd
+[Unit]
+Description=API Proxy Service
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/path/to/proxy
+ExecStart=/usr/bin/gunicorn -w 4 -b 127.0.0.1:3000 proxy:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Q: 配置热重载时会丢失请求吗？
+
+A: 不会。热重载使用线程锁保护，配置更新是原子操作。
+
+### Q: base_path 可以为空吗？
+
+A: 可以。不设置或设为空字符串时，程序按原始逻辑工作，不做路径前缀处理。
+
+## 📝 日志示例
+
+```
+⬇️  收到请求:      POST /api/v1/openai/v1/chat/completions?
+   剥离前缀:      '/api/v1' -> 有效路径: 'openai/v1/chat/completions'
+➡️  路由 'openai' 转发到: https://api.openai.com/v1/chat/completions
+   使用代理:     http://127.0.0.1:7890
+   --- Header 处理 ---
+   ➕  添加Header:      'Authorization'
+   🔄  保留Header:      'Content-Type'
+   -------------------
+⬅️  响应状态:      200
+```
+
+## 📄 License
+
+MIT License
+
+## 🤝 Contributing
+
+欢迎提交 Issue 和 Pull Request！
+```
